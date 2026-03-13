@@ -22,7 +22,6 @@ export const generateDrapedImage = async (
 
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     try {
-      // Create fresh instance to ensure environment API key is used
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const base64Data = fabricBase64.split(',')[1] || fabricBase64;
 
@@ -52,22 +51,20 @@ export const generateDrapedImage = async (
         4. NEUTRAL BACKGROUND: The background (${modelBackground.toLowerCase()}) must be soft, light-colored, and slightly out of focus to ensure the garment highlights more.
       `;
 
-      const prompt = garment === GarmentType.DUO_VIEW 
+      const prompt = garment === GarmentType.DUO_VIEW
         ? `World-class side-by-side fashion catalog photo. The SAME ${modelDescription} shown twice. LEFT: Knee-length Long Kurta. RIGHT: Tailored Shirt. ${highlightingInstructions} ${notes}`
-        : `Hyper-realistic fashion photography of ${modelDescription} wearing a ${garment}. ${highlightingInstructions} Pose: ${modelPose}. ${notes}`;
+        : `Hyper-realistic fashion photography of ${modelDescription} wearing a ${garment}. ${highlightingInstructions} Pose: ${modelPose}. Bottom garment color: ${bottomColor}. ${notes}`;
 
       const response: GenerateContentResponse = await ai.models.generateContent({
-        model: 'gemini-2.5-flash-image', // Reverting to free tier model
+        model: 'gemini-2.0-flash-exp-image-generation',
         contents: {
           parts: [
-            { inlineData: { data: base64Data, mimeType: 'image/png' } },
+            { inlineData: { data: base64Data, mimeType: 'image/jpeg' } },
             { text: prompt }
           ]
         },
         config: {
-          imageConfig: {
-            aspectRatio: aspectRatio as any
-          }
+          responseModalities: ['TEXT', 'IMAGE']
         }
       });
 
@@ -85,8 +82,7 @@ export const generateDrapedImage = async (
     } catch (error: any) {
       lastError = error;
       console.warn(`Draping attempt ${attempt + 1} failed:`, error.message);
-      
-      // Exponential backoff for transient errors
+
       if (attempt < MAX_RETRIES - 1) {
         await sleep(Math.pow(2, attempt) * 1000);
       }
