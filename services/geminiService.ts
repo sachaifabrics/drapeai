@@ -56,7 +56,8 @@ export const generateDrapedImage = async (
         : `Hyper-realistic fashion photography of ${modelDescription} wearing a ${garment}. ${highlightingInstructions} Pose: ${modelPose}. Bottom garment color: ${bottomColor}. ${notes}`;
 
       const response: GenerateContentResponse = await ai.models.generateContent({
-        model: 'gemini-2.0-flash-exp-image-generation',
+        // gemini-2.5-flash-image = "Nano Banana" — the current FREE tier image generation model
+        model: 'gemini-2.5-flash-image',
         contents: {
           parts: [
             { inlineData: { data: base64Data, mimeType: 'image/jpeg' } },
