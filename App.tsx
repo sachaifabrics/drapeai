@@ -663,8 +663,8 @@ const App: React.FC = () => {
                 <div className="w-24 h-24 relative mb-6">
                   <div className="absolute inset-0 border-t-4 border-amber-500 rounded-full animate-spin"></div>
                 </div>
-                <p className="text-white font-serif italic text-2xl">Crafting Perfection</p>
-                <p className="text-white/40 text-xs mt-4 animate-pulse uppercase tracking-[0.2em]">High-Resolution Rendering</p>
+                <p className="text-white font-serif italic text-2xl">Analyzing Fabric & Generating...</p>
+                <p className="text-white/40 text-xs mt-4 animate-pulse uppercase tracking-[0.2em]">Step 1: Reading fabric · Step 2: Rendering fashion image</p>
               </div>
             )}
 
