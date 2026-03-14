@@ -1,12 +1,10 @@
 import { GarmentType, ModelType, ModelPose, ModelBackground } from "../types";
 
-const MAX_RETRIES = 3;
-
 async function sleep(ms: number) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-function buildShortPrompt(
+function buildPrompt(
   garment: GarmentType,
   modelType: ModelType,
   modelPose: ModelPose,
@@ -15,70 +13,36 @@ function buildShortPrompt(
   notes: string
 ): string {
   const modelMap: Record<string, string> = {
-    [ModelType.INDIAN_CLASSIC]:      'clean-shaven Indian male model',
-    [ModelType.INDIAN_BEARDED]:      'bearded Indian male model',
-    [ModelType.INDIAN_TRADITIONAL]:  'regal Indian male model',
-    [ModelType.INTERNATIONAL]:       'international male fashion model',
+    [ModelType.INDIAN_CLASSIC]:     'clean-shaven Indian male model',
+    [ModelType.INDIAN_BEARDED]:     'bearded Indian male model',
+    [ModelType.INDIAN_TRADITIONAL]: 'regal Indian male model',
+    [ModelType.INTERNATIONAL]:      'international male fashion model',
   };
-
   const bgMap: Record<string, string> = {
-    'Pure Light Minimalist':  'white studio background',
-    'Soft Studio Grey':       'grey studio backdrop',
-    'Neutral Warm Beige':     'warm beige background',
-    'Minimalist Studio':      'clean studio background',
-    'Luxury Interior':        'luxury interior setting',
-    'Royal Palace':           'royal palace courtyard',
-    'Heritage Haveli':        'Indian heritage haveli',
-    'Festive Courtyard':      'festive Indian courtyard',
-    'Modern Loft':            'modern loft setting',
-    'Urban Street':           'upscale urban street',
-    'Corporate Office':       'modern corporate office',
-    'Luxury Yacht Deck':      'luxury yacht deck',
-    'Chic Cafe':              'chic upscale cafe',
+    'Pure Light Minimalist': 'white studio',
+    'Soft Studio Grey':      'grey studio',
+    'Neutral Warm Beige':    'beige background',
+    'Minimalist Studio':     'clean studio',
+    'Luxury Interior':       'luxury interior',
+    'Royal Palace':          'royal palace',
+    'Heritage Haveli':       'Indian haveli',
+    'Festive Courtyard':     'festive courtyard',
+    'Modern Loft':           'modern loft',
+    'Urban Street':          'urban street',
+    'Corporate Office':      'corporate office',
+    'Luxury Yacht Deck':     'yacht deck',
+    'Chic Cafe':             'chic cafe',
   };
 
-  const model  = modelMap[modelType]  || 'professional male model';
-  const bg     = bgMap[modelBackground] || 'studio background';
-  const pose   = modelPose.toLowerCase();
+  const model = modelMap[modelType] || 'male fashion model';
+  const bg    = bgMap[modelBackground] || 'studio';
+  const pose  = modelPose.toLowerCase();
+  const extra = notes ? ', ' + notes.substring(0, 50) : '';
 
-  let garmentDesc = '';
   if (garment === GarmentType.DUO_VIEW) {
-    garmentDesc = `split view: same model wearing kurta on left, tailored shirt on right`;
-  } else {
-    garmentDesc = `${garment} with ${bottomColor.toLowerCase()} bottom`;
+    return `fashion photo, ${model}, kurta left shirt right, split view, ${bg}, studio lighting${extra}`;
   }
-
-  const extra = notes ? notes.substring(0, 60) : '';
-
-  // Keep prompt under 400 chars to avoid URL length issues
-  return `professional fashion photo, ${model}, ${pose} pose, wearing ${garmentDesc}, ${bg}, studio lighting, sharp fabric detail, fashion magazine quality${extra ? ', ' + extra : ''}`;
-}
-
-async function generateWithPollinations(prompt: string, aspectRatio: string): Promise<string> {
-  let width = 768, height = 1024;
-  if (aspectRatio === '1:1')  { width = 1024; height = 1024; }
-  if (aspectRatio === '4:3')  { width = 1024; height = 768;  }
-  if (aspectRatio === '16:9') { width = 1280; height = 720;  }
-
-  const seed = Math.floor(Math.random() * 99999);
-  // Keep URL short — encode only what's necessary
-  const encodedPrompt = encodeURIComponent(prompt);
-  const url = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=${width}&height=${height}&model=flux&seed=${seed}&nologo=true`;
-
-  console.log('Fetching from Pollinations, prompt length:', prompt.length);
-
-  const res = await fetch(url, { signal: AbortSignal.timeout(60000) });
-  if (!res.ok) throw new Error(`Pollinations error: ${res.status}`);
-
-  const blob = await res.blob();
-  if (blob.size < 1000) throw new Error('Received empty image from Pollinations');
-
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => resolve(reader.result as string);
-    reader.onerror   = () => reject(new Error('Failed to read image'));
-    reader.readAsDataURL(blob);
-  });
+  return `fashion photo, ${model}, ${pose}, ${garment}, ${bottomColor} pants, ${bg}, studio lighting${extra}`;
 }
 
 export const generateDrapedImage = async (
@@ -91,18 +55,34 @@ export const generateDrapedImage = async (
   aspectRatio: string,
   notes: string
 ): Promise<string> => {
-  const prompt = buildShortPrompt(garment, modelType, modelPose, modelBackground, bottomColor, notes);
-  console.log('Final prompt:', prompt);
+  const prompt = buildPrompt(garment, modelType, modelPose, modelBackground, bottomColor, notes);
 
-  let lastError: any;
-  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+  let width = 768, height = 1024;
+  if (aspectRatio === '1:1')  { width = 1024; height = 1024; }
+  if (aspectRatio === '4:3')  { width = 1024; height = 768; }
+  if (aspectRatio === '16:9') { width = 1280; height = 720; }
+
+  // Call OUR Netlify serverless function — server-side, no rate limits, no CORS
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt > 0) await sleep(5000);
     try {
-      return await generateWithPollinations(prompt, aspectRatio);
+      const res = await fetch('/.netlify/functions/generate-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt, width, height }),
+        signal: AbortSignal.timeout(90000),
+      });
+
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      if (!data.image) throw new Error('No image in response');
+      return data.image;
+
     } catch (err: any) {
-      lastError = err;
       console.warn(`Attempt ${attempt + 1} failed:`, err.message);
-      if (attempt < MAX_RETRIES - 1) await sleep(3000);
+      if (attempt === 2) throw new Error(`Generation failed: ${err.message}`);
     }
   }
-  throw new Error(`Image generation failed after ${MAX_RETRIES} attempts: ${lastError?.message}`);
+
+  throw new Error('All attempts failed');
 };
